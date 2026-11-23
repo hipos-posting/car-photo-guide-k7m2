@@ -94,6 +94,10 @@ textarea{min-height:44px;resize:vertical}
 .send:disabled{background:#c5cad3;cursor:not-allowed}
 .ck-msg{font-size:14px;margin:8px 0 0;min-height:1em}
 .ck-msg.err{color:var(--danger)}
+.ck-msg.good{color:var(--ok);font-weight:700}
+label.ck.car input{accent-color:var(--accent)}
+label.ck.taken{color:var(--muted);cursor:default}
+label.ck .okline{color:var(--ok);font-weight:700}
 footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 
 /* ---- 以前のデザインに足したもの（見た目は以前に合わせる） ---- */
@@ -211,7 +215,7 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 <!-- チェックリスト -->
 <section id="check">
   <h2>チェックリスト</h2>
-  <p class="small">自分の|拠点を|選んで|ください。|全部|チェックして|名前を|書くと、|送信ボタンが|押せるように|なります。</p>
+  <p class="small">自分の|拠点を|選び、|<b>自分が|担当した|車を|1台</b>|選んで|ください。|全部|チェックして|名前を|書くと、|送信ボタンが|押せるように|なります。|車ごとに|1人ずつ|報告します。</p>
   <div class="tabs" role="tablist" id="siteTabs"></div>
   <div class="card" id="ck">
     <!-- 報告日ではないとき（チェックリストは見られるが、チェック・送信はできない） -->
@@ -222,7 +226,7 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 
     <!-- 送信済みのとき -->
     <div id="ckDone" hidden>
-      <p class="ck-title ok">✓ <span id="ckDoneLabel"></span>は|送信済みです</p>
+      <p class="ck-title ok">✓ <span id="ckDoneLabel"></span>は|全部の車の|報告が|済んでいます</p>
       <p class="small" style="margin:0" id="ckDoneInfo"></p>
     </div>
 
@@ -231,10 +235,13 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
       <div class="ck-sub"><span class="ck-title" id="ckLabel"></span><span class="ck-status" id="ckStatus"></span></div>
       <p class="ck-mode" id="ckMode"></p>
 
-      <div class="ck-group">写真を撮った</div>
+      <div class="ck-group">担当した車|（1台選ぶ）</div>
       <div id="ckCars"></div>
 
-      <div class="ck-group">目で見て|点検した|（全部の車）</div>
+      <div class="ck-group">写真を撮った</div>
+      <label class="ck"><input type="checkbox" data-k="photos"><span>選んだ車の|写真を|全部|撮った<span id="ckCnt"></span></span></label>
+
+      <div class="ck-group">目で見て|点検した|（選んだ車）</div>
       <label class="ck"><input type="checkbox" data-k="v_body"><span>車体の|傷・|擦れ・|へこみ</span></label>
       <label class="ck"><input type="checkbox" data-k="v_glass"><span>ガラスの|ひび・|欠け</span></label>
       <label class="ck"><input type="checkbox" data-k="v_tire"><span>タイヤ|（空気・|すり減り・|傷）</span></label>
@@ -243,10 +250,10 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
       <label class="ck"><input type="checkbox" data-k="v_warn"><span>メーターの|警告ランプ</span></label>
 
       <div class="ck-group">カーチェック|シート</div>
-      <label class="ck"><input type="checkbox" data-k="sheet"><span>全部の車の|カーチェック|シートを|書いて、|最後の|写真を|撮った</span></label>
+      <label class="ck"><input type="checkbox" data-k="sheet"><span>選んだ車の|カーチェック|シートを|書いて、|最後の|写真を|撮った</span></label>
 
       <div class="ck-group">送った</div>
-      <label class="ck"><input type="checkbox" data-k="sent"><span>全部の車の|写真を|LINE WORKSで|1台ずつ|送った</span></label>
+      <label class="ck"><input type="checkbox" data-k="sent"><span>選んだ車の|写真を|LINE WORKSで|送った</span></label>
       <label class="ck"><input type="checkbox" data-k="damage"><span>新しい|傷・|へこみ・|不具合は、|写真と|文章で|共有した<br><small>なかったときも、|そのまま|チェック</small></span></label>
 
       <div class="ck-group">気になったこと|（あれば）</div>
@@ -367,20 +374,20 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
   function siteName(k){ var s=siteOf(k); return s?s.name:""; }
   function esc(t){ return String(t).replace(/[&<>"']/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 
-  var period=localPeriod(), sentMap={}, state={checks:{},memo:""}, sending=false, serverLoaded=false;
+  /* 1人1台：担当した車を1台選んで報告する。報告済みの車は選べない（受け口の記録が正） */
+  var TEST=(function(){ var m=/[?&]test=([^&]+)/.exec(location.search); return m?decodeURIComponent(m[1]):""; })();
+  var period=localPeriod(), sentMap={}, carSentMap={}, state={car:null,checks:{},memo:""}, sending=false;
   var site="kansai";
   try{ var ss=localStorage.getItem("vehicle-photo-site"); if(ss && siteName(ss)) site=ss; }catch(e){}
 
-  function storeKey(){ return "vehicle-photo-report:"+period.key+":"+site; }
+  function storeKey(){ return "vehicle-photo-report2:"+(TEST?"test:":"")+period.key+":"+site; }
   function load(){
-    state={checks:{},memo:""};
+    state={car:null,checks:{},memo:""};
     if(!period) return;
-    try{
-      var s=JSON.parse(localStorage.getItem(storeKey())||"null");
-      if(s){ state=s.state||state; if(s.sent && !serverLoaded && !sentMap[site]) sentMap[site]=s.sent; }
-    }catch(e){}
+    try{ var s=JSON.parse(localStorage.getItem(storeKey())||"null"); if(s && s.state) state=s.state; }catch(e){}
+    if(!state.checks) state.checks={};
   }
-  function save(){ if(!period) return; try{ localStorage.setItem(storeKey(),JSON.stringify({state:state,sent:sentMap[site]||null})); }catch(e){} }
+  function save(){ if(!period) return; try{ localStorage.setItem(storeKey(),JSON.stringify({state:state})); }catch(e){} }
   try{ el("ckName").value=localStorage.getItem("vehicle-photo-name")||""; }catch(e){}
 
   /* 拠点タブ */
@@ -405,55 +412,73 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
       return "<div><b>"+esc(s.name)+"</b><span>"+to+"</span></div>";
     }).join("");
   }
-  /* 選んだ拠点の車両の行 */
   /* 1台の枚数。報告日でないときは 7日・21日 の両方を出す */
   function carCount(c){
     var n7=12-(c.nodrarec?1:0);
     if(!period) return n7+"/"+(n7-1)+"枚";
     return (period.coolant?n7:n7-1)+"枚";
   }
+  function carId(c){ return c.id || c.plate || c.name; }
+  function carsOf(k){ var s=siteOf(k); return (s && s.cars) || null; }
+  function sentOf(k){ return carSentMap[k] || {}; }
+  function selCar(){ var cs=carsOf(site)||[]; for(var i=0;i<cs.length;i++) if(carId(cs[i])===state.car) return cs[i]; return null; }
+
+  /* 担当した車を1台選ぶ（報告済みの車は選べない） */
   function renderCars(){
-    var s=siteOf(site), box=el("ckCars");
-    if(!s || !s.cars){
+    var cs=carsOf(site), box=el("ckCars");
+    if(!cs){
       box.innerHTML="<p class='nocars small'>"+W(loadFailed?"車両の|一覧を|読み込めませんでした。|電波の|よいところで|開き直してください。":"読み込み中…")+"</p>";
       return;
     }
-    if(!s.cars.length){ box.innerHTML="<p class='nocars'>"+W("この拠点の|車両リストは|<span class='tbd'>確認中</span>|です。")+"</p>"; return; }
-    box.innerHTML=s.cars.map(function(c,i){
-      return "<label class='ck'><input type='checkbox' data-k='car_"+i+"'><span><b>"+esc(c.name)+"</b> <span class='plate'>"+esc(c.plate||"")+"</span>"
-        +(c.nodrarec?" <small>ドラレコなし</small>":"")+"</span><span class='cnt2'>"+carCount(c)+"</span></label>";
+    if(!cs.length){ box.innerHTML="<p class='nocars'>"+W("この拠点の|車両リストは|<span class='tbd'>確認中</span>|です。")+"</p>"; return; }
+    var m=period?sentOf(site):{};
+    box.innerHTML=cs.map(function(c){
+      var id=carId(c), r=m[id];
+      return "<label class='ck car"+(r?" taken":"")+"'><input type='radio' name='ckCar' value='"+esc(id)+"'"+(r||!period?" disabled":"")+(state.car===id&&!r?" checked":"")+">"
+        +"<span><b>"+esc(c.name)+"</b> <span class='plate'>"+esc(c.plate||"")+"</span>"
+        +(c.nodrarec?" <small>ドラレコなし</small>":"")
+        +(r?"<br><small class='okline'>✓ 報告済み　"+esc(r.name)+"　"+esc(r.at)+"</small>":"")+"</span>"
+        +"<span class='cnt2'>"+carCount(c)+"</span></label>";
     }).join("");
+    box.querySelectorAll("input[name=ckCar]").forEach(function(r){
+      r.onchange=function(){ state.car=r.value; save(); msg(""); render(); };
+    });
   }
 
   function boxes(){ return document.querySelectorAll("#ckOn input[type=checkbox]"); }
-  function hasCars(){ var s=siteOf(site); return !!(s && s.cars && s.cars.length); }
+  function hasCars(){ var cs=carsOf(site); return !!(cs && cs.length); }
+  function allDone(k){ var cs=carsOf(k), m=sentOf(k); return !!(cs && cs.length && cs.every(function(c){ return m[carId(c)]; })); }
   /* t は画面側で用意した決まった文（「|」は改行の区切り） */
-  function msg(t,err){ var m=el("ckMsg"); m.innerHTML=W(esc(t||"")); m.className="ck-msg"+(err?" err":""); }
+  function msg(t,err){ var m=el("ckMsg"); m.innerHTML=W(esc(t||"")); m.className="ck-msg"+(err?" err":(t?" good":"")); }
   function update(){
     var bs=boxes(), done=0; bs.forEach(function(i){ if(i.checked) done++; });
-    var total=bs.length, ok=hasCars() && done===total;
+    var car=selCar(), taken=car && sentOf(site)[carId(car)];
+    var total=bs.length+1; if(car && !taken) done++;
+    var ok=hasCars() && done===total;
     var named=(el("ckName").value.trim()!=="");
     var st=el("ckStatus");
     if(!period){ st.textContent=""; st.className="ck-status"; el("ckSend").disabled=true; return; }
     if(!hasCars()){ st.textContent=""; st.className="ck-status"; }
     else if(ok){ st.textContent="✓ 全部チェック済み"; st.className="ck-status all"; }
     else { st.textContent="あと "+(total-done)+" こ"; st.className="ck-status"; }
+    el("ckCnt").textContent = car ? "（"+carCount(car)+"）" : "";
     el("ckSend").disabled = sending || !ok || !named;
   }
   function render(){
     el("siteTabs").querySelectorAll(".tab").forEach(function(b){
       var k=b.getAttribute("data-site");
       b.classList.toggle("on",k===site); b.setAttribute("aria-selected",k===site);
-      b.classList.toggle("sent",!!(period && sentMap[k]));
+      b.classList.toggle("sent",!!(period && allDone(k)));
     });
-    var sent=period && sentMap[site];
+    var done=period && allDone(site);
     el("ckOff").hidden = !!period;
-    el("ckDone").hidden = !sent;
-    el("ckOn").hidden = !!sent;
+    el("ckDone").hidden = !done;
+    el("ckOn").hidden = !!done;
     el("ckOn").classList.toggle("off",!period);
     el("ckMemo").disabled = !period;
+    if(state.car && period && sentOf(site)[state.car]) state.car=null;   /* ほかの人が先に報告した */
     if(!period){
-      /* 報告日ではない：中身は見せるが、チェックと送信はできない */
+      /* 報告日ではない：中身は見せるが、選択・チェック・送信はできない */
       el("ckLabel").textContent=siteName(site);
       el("ckMode").textContent="写真の枚数は「7日/21日」です";
       renderCars();
@@ -465,9 +490,10 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
       update();
       return;
     }
-    if(sent){
+    if(done){
+      var m=sentOf(site);
       el("ckDoneLabel").innerHTML=esc(siteName(site))+"の<wbr>"+esc(period.label);
-      el("ckDoneInfo").textContent="送信："+sent.at+"　"+sent.name;
+      el("ckDoneInfo").innerHTML=(carsOf(site)||[]).map(function(c){ var r=m[carId(c)]; return "✓ "+esc(c.name)+"　"+esc(r.name)+"　"+esc(r.at); }).join("<br>");
       return;
     }
     el("ckLabel").textContent=siteName(site)+"　"+period.label;
@@ -488,21 +514,30 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
   });
 
   el("ckSend").addEventListener("click",function(){
+    var car=selCar(); if(!car) return;
     sending=true; el("ckSend").textContent="送信中…"; msg(""); update();
     var checks={}; boxes().forEach(function(i){ checks[i.getAttribute("data-k")]=i.checked; });
     var mySite=site;
     function done(){ sending=false; el("ckSend").textContent="送信する"; }
-    fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body:JSON.stringify({period:period.key,site:mySite,name:el("ckName").value.trim(),memo:state.memo||"",checks:checks})})
+    var body={period:period.key,site:mySite,car:carId(car),name:el("ckName").value.trim(),memo:state.memo||"",checks:checks};
+    if(TEST) body.test=TEST;
+    fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})
       .then(function(r){ return r.json(); })
       .then(function(res){
         done();
-        if(res.ok || res.error==="already_sent"){ sentMap[mySite]=res.sent; save(); render(); return; }
+        if(res.ok){
+          carSentMap[mySite]=res.carSent||carSentMap[mySite];
+          state={car:null,checks:{},memo:""}; save(); render();
+          msg(car.name+"の|報告を|送信しました。|ほかの車も|担当したときは、|続けて|選んで|報告してください。");
+          return;
+        }
+        if(res.error==="car_taken"){ carSentMap[mySite]=res.carSent||carSentMap[mySite]; state.car=null; save(); render(); msg("この車は|もう|報告されています。|自分が|担当した|車を|選んでください。",true); return; }
         if(res.error==="not_period"){ period=null; render(); return; }
         if(res.error==="period_mismatch"){ period=res.period; load(); render(); msg("報告する回が|変わりました。|もう一度|チェックしてください。",true); return; }
         if(res.error==="not_complete"){ msg("チェックが|全部|入っていません。|開き直して、|もう一度|確かめてください。",true); update(); return; }
         if(res.error==="no_cars"){ msg("この拠点の|車両リストが|まだ|ありません。",true); update(); return; }
         if(res.error==="no_name"){ msg("名前を|書いてください。",true); update(); return; }
+        if(res.error==="reload"||res.error==="bad_car"){ msg("ページが|新しくなりました。|ページを|開き直してから|送ってください。",true); update(); return; }
         msg("送信できませんでした。|少し待って、|もう一度|押してください。",true); update();
       })
       .catch(function(){ done(); msg("送信できませんでした。|電波の|よいところで、|もう一度|押してください。",true); update(); });
@@ -510,8 +545,8 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 
   if(!siteOf(site)) site="kansai";
   buildTabs(); renderSendTo(); load(); render();
-  /* 受け口に、拠点の設定・今日の回・拠点ごとの送信状況を確かめる */
-  fetch(API).then(function(r){ return r.json(); }).then(function(s){
+  /* 受け口に、拠点の設定・今日の回・車ごとの報告状況を確かめる */
+  fetch(API+(TEST?"?test="+encodeURIComponent(TEST):"")).then(function(r){ return r.json(); }).then(function(s){
     if(!s || !s.ok || sending) return;
     if(s.sites && s.sites.length){
       SITES=s.sites; if(!siteOf(site)) site=SITES[0].k;
@@ -520,8 +555,8 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
     var p=s.period;
     if(!p){ period=null; render(); return; }
     var changed=(!period || period.key!==p.key);
-    period=p; sentMap=s.sent||{}; serverLoaded=true;
-    if(changed) load(); else save();
+    period=p; sentMap=s.sent||{}; carSentMap=s.carSent||{};
+    if(changed) load();
     render();
   }).catch(function(){ loadFailed=true; render(); });
 })();
